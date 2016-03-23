@@ -5,6 +5,9 @@ var inherits = require('inherits')
 
 var CONNECTION_CHECK_INTERVAL = 5000 // check the publisher's connection and generate a score every 5 secs
 var MIN_REQUIRED_TIMESTAMP_COUNT = CONNECTION_CHECK_INTERVAL / 100
+var INITIAL_CONNECTION_SCORE = 5
+
+WebSocketMirror.MESSAGE_TYPE_CONNECTION_SCORE = 1
 
 inherits(WebSocketMirror, ws.Server)
 
@@ -30,7 +33,8 @@ WebSocketMirror.prototype._onconnection = function (socket) {
   if (action === 'publish') {
     this._publishers[channel] = socket
     this._publishers[channel]._timestamps = []
-    this._publishers[channel]._connectionScore = 5
+    this._publishers[channel]._connectionScore = INITIAL_CONNECTION_SCORE
+    this._publishers[channel]._connectionScoreMessage = new Uint8Array([WebSocketMirror.MESSAGE_TYPE_CONNECTION_SCORE, INITIAL_CONNECTION_SCORE])
     this._publishers[channel]._timer = setTimeout(this._checkconnection.bind(this, channel), CONNECTION_CHECK_INTERVAL)
     socket.on('close', this._onpublisherclose.bind(this, channel, socket))
     socket.on('message', this._onmessage.bind(this, channel))
@@ -107,11 +111,10 @@ WebSocketMirror.prototype._checkconnection = function (channel) {
       connectionScore = 0
     }
 
-    //if (diff > 0) {
-      console.log('previous: ' + previousTimestamps.length + ', current: ' + currentTimestamps.length)
-      console.log(connectionScore)
-    //}
     this._publishers[channel]._connectionScore = connectionScore
+    this._publishers[channel]._connectionScoreMessage[1] = connectionScore
+    var message = this._publishers[channel]._connectionScoreMessage
+    this._publishers[channel].send(message.buffer)
   }
 
   this._publishers[channel]._previousTimestamps = currentTimestamps
