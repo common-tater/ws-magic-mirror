@@ -94,7 +94,7 @@ WebSocketMirror.prototype._checkconnection = function (channel) {
       connectionScore -= 1
     } else if (diff === 1) {
       // since the diff was so small, consider it no change
-      connectionScore = connectionScore
+      connectionScore += 0
     } else {
       connectionScore += 1
     }
