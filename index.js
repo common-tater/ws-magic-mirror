@@ -76,16 +76,12 @@ WebSocketMirror.prototype._checkconnection = function (channel) {
     var diff = previousTimestamps.length - currentTimestamps.length
     var connectionScore = this._publishers[channel]._connectionScore
 
-    // if the publisher hasn't met the minimum, cap their score at 5
-    if (currentTimestamps.length < MIN_REQUIRED_TIMESTAMP_COUNT && connectionScore > 5) {
-      console.log('minimum not met, only got: ' + currentTimestamps.length)
-      connectionScore = 5
-    }
-
     if (currentTimestamps.length === 0) {
       console.log('got none since last check')
-    } else if (diff > 10) {
+    } else if (diff > 25) {
       connectionScore -= 5
+    } else if (diff > 10) {
+      connectionScore -= 4
     } else if (diff > 5) {
       connectionScore -= 3
     } else if (diff > 2) {
@@ -97,6 +93,12 @@ WebSocketMirror.prototype._checkconnection = function (channel) {
       connectionScore += 0
     } else {
       connectionScore += 1
+    }
+
+    // if the publisher hasn't met the minimum, cap their score at 5
+    if (currentTimestamps.length < MIN_REQUIRED_TIMESTAMP_COUNT && connectionScore > 5) {
+      console.log('minimum not met, only got: ' + currentTimestamps.length)
+      connectionScore = 5
     }
 
     if (connectionScore > 10) {
