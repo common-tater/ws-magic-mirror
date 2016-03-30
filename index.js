@@ -8,6 +8,9 @@ var MIN_REQUIRED_TIMESTAMP_COUNT = CONNECTION_CHECK_INTERVAL / 100
 var INITIAL_CONNECTION_SCORE = 5
 
 WebSocketMirror.MESSAGE_TYPE_CONNECTION_SCORE = 1
+WebSocketMirror.MESSAGE_TYPE_BROADCAST_START = 2
+WebSocketMirror.MESSAGE_TYPE_BROADCAST_PAUSE = 3
+WebSocketMirror.MESSAGE_TYPE_BROADCAST_END = 4
 
 inherits(WebSocketMirror, ws.Server)
 
@@ -35,6 +38,7 @@ WebSocketMirror.prototype._onconnection = function (socket) {
     this._publishers[channel]._timestamps = []
     this._publishers[channel]._connectionScore = INITIAL_CONNECTION_SCORE
     this._publishers[channel]._connectionScoreMessage = new Uint8Array([WebSocketMirror.MESSAGE_TYPE_CONNECTION_SCORE, INITIAL_CONNECTION_SCORE])
+    this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_START, channel)
     this._publishers[channel]._timer = setTimeout(this._checkconnection.bind(this, channel), CONNECTION_CHECK_INTERVAL)
     socket.on('close', this._onpublisherclose.bind(this, channel, socket))
     socket.on('message', this._onmessage.bind(this, channel))
@@ -43,6 +47,18 @@ WebSocketMirror.prototype._onconnection = function (socket) {
     this.channels[channel].push(socket)
     socket.on('close', this._onsubscriberclose.bind(this, channel, socket))
     socket.on('message', this._oncontrolmessage.bind(this, channel, socket))
+  }
+}
+
+WebSocketMirror.prototype._sendSignalToListeners = function (signal, channel) {
+  var message = new Uint8Array([signal])
+  var subscribers = this.channels[channel]
+  for (var i in subscribers) {
+    try {
+      subscribers[i].send(message.buffer)
+    } catch (err) {
+      console.log(err)
+    }
   }
 }
 
@@ -111,6 +127,10 @@ WebSocketMirror.prototype._checkconnection = function (channel) {
       connectionScore = 0
     }
 
+    // if (diff > 0) {
+      // console.log('previous: ' + previousTimestamps.length + ', current: ' + currentTimestamps.length)
+      // console.log('score: ' + connectionScore)
+    // }
     this._publishers[channel]._connectionScore = connectionScore
     this._publishers[channel]._connectionScoreMessage[1] = connectionScore
     var message = this._publishers[channel]._connectionScoreMessage
@@ -138,4 +158,5 @@ WebSocketMirror.prototype._onpublisherclose = function (channel, socket) {
   clearTimeout(this._publishers[channel]._timer)
   delete this._publishers[channel]
   console.log('publisher for channel ' + channel + ' closed')
+  this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_END, channel)
 }
