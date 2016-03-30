@@ -9,8 +9,11 @@ var INITIAL_CONNECTION_SCORE = 5
 
 WebSocketMirror.MESSAGE_TYPE_CONNECTION_SCORE = 1
 WebSocketMirror.MESSAGE_TYPE_BROADCAST_START = 2
-WebSocketMirror.MESSAGE_TYPE_BROADCAST_PAUSE = 3
+WebSocketMirror.MESSAGE_TYPE_BROADCAST_MUTED = 3
 WebSocketMirror.MESSAGE_TYPE_BROADCAST_END = 4
+
+WebSocketMirror.INCOMING_MESSAGE_TYPE_BROADCAST_MUTED = 'm'
+WebSocketMirror.INCOMING_MESSAGE_TYPE_BROADCAST_UNMUTED = 'u'
 
 inherits(WebSocketMirror, ws.Server)
 
@@ -63,6 +66,18 @@ WebSocketMirror.prototype._sendSignalToListeners = function (signal, channel) {
 }
 
 WebSocketMirror.prototype._onmessage = function (channel, message) {
+  if (typeof message === 'string') {
+    switch (message) {
+      case WebSocketMirror.INCOMING_MESSAGE_TYPE_BROADCAST_MUTED:
+        this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_MUTED, channel)
+        break
+      case WebSocketMirror.INCOMING_MESSAGE_TYPE_BROADCAST_UNMUTED:
+        this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_START, channel)
+        break
+    }
+    return
+  }
+
   // this may get called by subscribers before there is a publisher,
   // so only add to the publisher's timestamps if the publisher has connected
   this._publishers[channel] && this._publishers[channel]._timestamps.push(Date.now())
@@ -77,18 +92,39 @@ WebSocketMirror.prototype._onmessage = function (channel, message) {
 }
 
 WebSocketMirror.prototype._oncontrolmessage = function (channel, socket, controlMessage) {
+  switch (controlMessage) {
+    case '-':
+      this._pausesubscriber(channel, socket, true)
+      break
+    case '+':
+      this._pausesubscriber(channel, socket, false)
+      break
+  }
+}
+
+WebSocketMirror.prototype._pausesubscriber = function (channel, socket, paused) {
   var subscribers = this.channels[channel]
   for (var i in subscribers) {
     if (subscribers[i] === socket) {
-      var paused = controlMessage === '-'
       subscribers[i]._paused = paused
       return
     }
   }
 }
 
-WebSocketMirror.prototype._checkconnection = function (channel) {
+WebSocketMirror.prototype._mutechannel = function (channel, muted) {
   if (!this._publishers[channel]) return
+
+  this._publishers[channel]._muted = muted
+  if (muted) {
+    this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_MUTED, channel)
+  } else {
+    this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_START, channel)
+  }
+}
+
+WebSocketMirror.prototype._checkconnection = function (channel) {
+  if (!this._publishers[channel] || !this._publishers[channel]._muted) return
 
   var previousTimestamps = this._publishers[channel]._previousTimestamps
   var currentTimestamps = this._publishers[channel]._timestamps
@@ -97,7 +133,7 @@ WebSocketMirror.prototype._checkconnection = function (channel) {
     var connectionScore = this._publishers[channel]._connectionScore
 
     if (currentTimestamps.length === 0) {
-      console.log('got none since last check')
+      console.log('got no data from speaker on channel ' + channel + ' since last check')
     } else if (diff > 25) {
       connectionScore -= 5
     } else if (diff > 10) {
