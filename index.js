@@ -43,6 +43,7 @@ WebSocketMirror.prototype._onconnection = function (socket) {
     this._publishers[channel]._connectionScoreMessage = new Uint8Array([WebSocketMirror.MESSAGE_TYPE_CONNECTION_SCORE, INITIAL_CONNECTION_SCORE])
     this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_START, channel)
     this._publishers[channel]._timer = setTimeout(this._checkconnection.bind(this, channel), CONNECTION_CHECK_INTERVAL)
+    this._publishers[channel]._status = 'live'
     socket.on('close', this._onpublisherclose.bind(this, channel, socket))
     socket.on('message', this._onmessage.bind(this, channel))
   } else if (action === 'subscribe') {
@@ -50,6 +51,14 @@ WebSocketMirror.prototype._onconnection = function (socket) {
     this.channels[channel].push(socket)
     socket.on('close', this._onsubscriberclose.bind(this, channel, socket))
     socket.on('message', this._oncontrolmessage.bind(this, channel, socket))
+    if (this._publishers[channel] && this._publishers[channel]._status === 'live') {
+      var message = new Uint8Array([WebSocketMirror.MESSAGE_TYPE_BROADCAST_START])
+      try {
+        socket.send(message.buffer)
+      } catch (err) {
+        console.log(err)
+      }
+    }
   }
 }
 
@@ -69,10 +78,10 @@ WebSocketMirror.prototype._onmessage = function (channel, message) {
   if (typeof message === 'string') {
     switch (message) {
       case WebSocketMirror.INCOMING_MESSAGE_TYPE_BROADCAST_MUTED:
-        this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_MUTED, channel)
+        this._mutechannel(channel, true)
         break
       case WebSocketMirror.INCOMING_MESSAGE_TYPE_BROADCAST_UNMUTED:
-        this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_START, channel)
+        this._mutechannel(channel, false)
         break
     }
     return
@@ -115,16 +124,17 @@ WebSocketMirror.prototype._pausesubscriber = function (channel, socket, paused) 
 WebSocketMirror.prototype._mutechannel = function (channel, muted) {
   if (!this._publishers[channel]) return
 
-  this._publishers[channel]._muted = muted
   if (muted) {
+    this._publishers[channel]._status = 'muted'
     this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_MUTED, channel)
   } else {
+    this._publishers[channel]._status = 'live'
     this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_START, channel)
   }
 }
 
 WebSocketMirror.prototype._checkconnection = function (channel) {
-  if (!this._publishers[channel] || !this._publishers[channel]._muted) return
+  if (!this._publishers[channel] || this._publishers[channel]._status !== 'live') return
 
   var previousTimestamps = this._publishers[channel]._previousTimestamps
   var currentTimestamps = this._publishers[channel]._timestamps
