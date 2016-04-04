@@ -31,7 +31,6 @@ function WebSocketMirror (httpServer) {
 WebSocketMirror.prototype._onconnection = function (socket) {
   // give each connecting peer an id that we can track them by
   socket._hyperId = String(Math.random()).slice(2)
-  console.log('connected ' + socket._hyperId)
   var path = socket.upgradeReq.url.slice(1).split('/')
   if (path.length < 2) return socket.close()
   var channel = path[0]
@@ -194,7 +193,6 @@ WebSocketMirror.prototype._onsubscriberclose = function (channel, socket) {
   this.channels[channel] = this.channels[channel].filter(function (s) {
     return s !== socket
   })
-  console.log('subscriber closed, num left: ' + Object.keys(this.channels[channel]).length)
   if (Object.keys(this.channels[channel]).length === 0) {
     delete this.channels[channel]
   }
@@ -203,6 +201,5 @@ WebSocketMirror.prototype._onsubscriberclose = function (channel, socket) {
 WebSocketMirror.prototype._onpublisherclose = function (channel, socket) {
   clearTimeout(this._publishers[channel]._timer)
   delete this._publishers[channel]
-  console.log('publisher for channel ' + channel + ' closed')
   this._sendSignalToListeners(WebSocketMirror.MESSAGE_TYPE_BROADCAST_END, channel)
 }
